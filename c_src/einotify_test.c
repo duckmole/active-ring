@@ -9,7 +9,8 @@ START_TEST (decode_inotify_mask_test) {
   fail_unless (decode_inotify_mask ("open") == IN_OPEN, NULL);
   fail_unless (decode_inotify_mask ("create") == IN_CREATE, NULL);
   fail_unless (decode_inotify_mask ("move") == IN_MOVE, NULL);
-  fail_unless (decode_inotify_mask ("move,create") == IN_MOVE|IN_CREATE, NULL);
+  fail_unless (decode_inotify_mask ("move,create") == (IN_MOVE|IN_CREATE), NULL);
+  fail_unless (decode_inotify_mask ("move,open,create") == (IN_MOVE|IN_CREATE|IN_OPEN), NULL);
 }
 END_TEST
 

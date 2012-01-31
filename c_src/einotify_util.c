@@ -9,10 +9,8 @@ uint32_t decode_inotify_mask (const char* string) {
   uint32_t result = 0;
   char buf[1024];
   strcpy (buf, string);
-  printf("buf: %s\n", buf);
 
   for (tok=strtok(buf,","); tok!=NULL; tok=strtok(NULL,",")) {
-    printf("tok: %s\n", tok);
 
     if (strcmp (tok, "access") == 0) {
       result |= IN_ACCESS;
