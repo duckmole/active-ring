@@ -4,6 +4,7 @@
 
 -module (adlib).
 -export ([compare_dict/2]).
+-export ([now_diff/2]).
 
 compare_dict (Modified, Original) ->
     Init_fun = fun (Key, Dict) -> dict: store (Key, dict: new (), Dict) end,
@@ -23,3 +24,8 @@ compare_dict ({ok, Value}, Key, Value, Result, Modified) ->
 compare_dict ({ok, New_value}, Key, Value, Result, Modified) ->
     Changed = dict: store (Key, {New_value, Value}, dict: fetch (changed, Result)),
     {dict: store (changed, Changed, Result), dict: erase (Key, Modified)}.
+
+now_diff ({From_mega, From_sec, From_micro}, {To_mega, To_sec, To_micro}) ->
+    To_micro - From_micro
+	+ 1000000 * (To_sec - From_sec)
+	+ 1000000000000 * (To_mega - From_mega).

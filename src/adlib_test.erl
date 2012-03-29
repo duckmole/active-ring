@@ -7,6 +7,7 @@
 -export ([dict_compare_empty/0]).
 -export ([dict_compare_empty_with_non_empty/0]).
 -export ([dict_compare/0]).
+-export ([now_diff/0]).
 
 dict_compare_empty () ->
     Empty = dict: new (),
@@ -42,3 +43,15 @@ dict_compare () ->
     {changed, Expected_changed} = {changed, Changed},
     {same, Expected_same} = {same, Same}.
     
+now_diff () ->
+    Data = [{{0,0,0}, {0,0,100}, 100},
+	    {{0,0,0}, {0,2,100}, 2000100},
+	    {{0,0,0}, {3,2,100}, 3000002000100}],
+    lists: foldl (
+      fun ({From, To, Expected}, Count) ->
+	      Result = adlib: now_diff (From, To),
+	      {Count, Expected} = {Count, Result},
+	      Count + 1
+      end,
+      1,
+      Data).
