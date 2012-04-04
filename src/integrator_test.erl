@@ -13,6 +13,7 @@
 -test (recompiles_when_a_missing_include_is_found).
 -test (recompiles_when_an_included_is_lost).
 -test (tests_may_spawn_link).
+-test (tests_are_concurrent).
 -export ([with_files/2]).
 -export ([start_stop/0]).
 -export ([tests_are_cleared_when_anything_recompiles/0]).
@@ -28,6 +29,7 @@
 -export ([corrected_files_are_recompiled/0]).
 -export ([recompiles_when_an_included_is_lost/0]).
 -export ([tests_may_spawn_link/0]).
+-export ([tests_are_concurrent/0]).
 
 start_stop () ->
     Args = [self ()],
@@ -398,19 +400,48 @@ consul_forms () ->
     Binary = modules: forms_to_binary (integrator: consul_forms (myconsul)),
     {module, myconsul} = code: load_binary (myconsul, "myconsul.beam", Binary),
     try
-	Result1 = myconsul: test (?MODULE, consul_forms_test1, self ()),
+	Result1 = myconsul: test (?MODULE, consul_forms_test1, [], self ()),
 	Result1 = receive_one (),
 	{test, ?MODULE, consul_forms_test1, pass} = Result1,
 
-	Result2 = myconsul: test (?MODULE, consul_forms_test2, self ()),
+	Result2 = myconsul: test (?MODULE, consul_forms_test2, [], self ()),
 	Result2 = receive_one (),
 	{test, ?MODULE, consul_forms_test2, {error, {undef, _}}} = Result2,
 
-	Result3 = myconsul: test (?MODULE, consul_forms_test3, self ()),
+	Result3 = myconsul: test (?MODULE, consul_forms_test3, [], self ()),
 	Result3 = receive_one (),
 	{test, ?MODULE, consul_forms_test3, {error, {undef, _}}} = Result3
     after
 	code: purge (myconsul),
       code: delete (myconsul)
     end,
+    ok.
+
+tests_are_concurrent () ->
+    Files = [{file, "mytest.erl",
+	      ["-module (mytest).",
+	       "-test (exports).",
+	       "-export ([slow1/0, slow2/0]).",
+	       "slow1 () ->",
+	       "ok = timer: sleep (1000).",
+	       "slow2 () ->",
+	       "ok = timer: sleep (1200)."]}],
+    ok = fixtures: use_tree (Files, fun tests_are_concurrent/2).
+
+tests_are_concurrent (Root, [{file, F, _}]) ->
+    %% Mytest = filename: join (Root, F),
+    %% Integrator = spawn_link (integrator, init, [self (), [Root], []]),
+    %% Integrator ! {{file, ".erl"}, Mytest, found},
+    %% {totals, _} = receive_one (),
+    %% {compile, _} = receive_one (),
+    %% {totals, {1,1,0,2,0,0}} = receive_one (),
+    %% Start = now (),
+    %% {1, {test, {mytest, slow1, 0, pass}}} = {1, receive_one ()},
+    %% {2, {totals, {1,1,0,2,1,0}}} = {2, receive_one ()},
+    %% {3, {test, {mytest, slow2, 0, pass}}} = {3, receive_one ()},
+    %% {4, {totals, {1,1,0,2,2,0}}} = {4, receive_one ()},
+    %% Finish = now (),
+    %% Diff_micro = adlib:now_diff (Start, Finish),
+    %% {parallel, true} = {parallel, Diff_micro < 1500000},
+    %% Integrator ! stop,
     ok.

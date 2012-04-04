@@ -4,7 +4,7 @@
 
 -module (integrator).
 -export ([init/1, init/3]).
--export ([slave_node/1]).
+-export ([slave_node/1, slave/0]).
 -export ([consul_forms/1]).
 -import (dict, [new/0, store/3, fetch/2, fold/3, erase/2]).
 -record (state, {mux, includes, slave, modules, included}).
@@ -141,7 +141,7 @@ test_module (File, {ok, _, _, Tests}, State) ->
 test (File, F, State) ->
     #state {slave = Slave, mux = Mux, modules = Modules} = State,
     {ok, M, Binary, Tests} = fetch (File, Modules),
-    spawn_link (Slave, consul, test, [M, F, self ()]),
+    spawn_link (Slave, consul, test, [M, F, [], self ()]),
     Result =
 	receive
 	    {test, M, F, pass} ->
@@ -223,9 +223,9 @@ consul_forms (Module) ->
 %% Abstract forms for following code:
 %%
 %% -module (Module).
-%% -export ([test/3]).
-%% test (M, F, Caller) ->
-%%     {Pid, Monitor} = spawn_monitor (M, F, []),
+%% -export ([test/4]).
+%% test (M, F, A, Caller) ->
+%%     {Pid, Monitor} = spawn_monitor (M, F, A),
 %%     receive
 %% 	      {'DOWN', Monitor, process, Pid, normal} ->
 %% 	         Caller ! {test, M, F, pass};
@@ -233,16 +233,16 @@ consul_forms (Module) ->
 %% 	         Caller ! {test, M, F, {error, Error}}
 %%     end.
     [{attribute,1,module,Module},
-     {attribute,2,export,[{test,3}]},
-     {function,3,test,3,
+     {attribute,2,export,[{test,4}]},
+     {function,3,test,4,
       [{clause,3,
-	[{var,3,'M'},{var,3,'F'},{var,3,'Caller'}],
+	[{var,3,'M'},{var,3,'F'},{var,3,'A'},{var,3,'Caller'}],
 	[],
 	[{match,4,
 	  {tuple,4,[{var,4,'Pid'},{var,4,'Monitor'}]},
 	  {call,4,
 	   {atom,4,spawn_monitor},
-	   [{var,4,'M'},{var,4,'F'},{nil,4}]}},
+	   [{var,4,'M'},{var,4,'F'},{var,4,'A'}]}},
 	 {'receive',5,
 	  [{clause,6,
 	    [{tuple,6,

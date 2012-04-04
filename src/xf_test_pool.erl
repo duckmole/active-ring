@@ -1,30 +1,31 @@
--module (xf_pool).
--export ([init/1]).
+-module (xf_test_pool).
+-export ([init/2]).
+-record (state, {node, max, parent, running, queue}).
 
-init (Max) ->
-    process_flag(trap_exit, true),
-    loop (Max, [], queue: new ()).
+init (Max, Pid) ->
+    Node = integrator: slave (),
+    State = #state{node=Node, max=Max, parent=Pid, running=[], queue=queue:new()},
+    loop (State).
 
-loop (Max, Running, Queue) ->
+loop (State) ->
     receive
-	{queue, Jobs} ->
-	    In = fun (Job, Q) -> queue: in (Job, Q) end,
-	    New_q = lists: foldl (In, Queue, Jobs),
-	    run (Max, Running, New_q);
-	{'EXIT', Pid, _} ->
-	    {value, {Pid}, New_r} = lists: keytake (Pid, 1, Running),
-	    run (Max, New_r, Queue);
+	{queue, Test} ->
+	    Q = queue: in (Test, State#state.queue),
+	    run (State#state{queue=Q});
+	{test, M, F, _}=Msg ->
+	    State#state.parent ! Msg,
+	    run (State#state {running = lists: delete ({M, F}, State#state.running)});
 	stop ->
 	    bye
     end.
 
-run (Max, Running, Queue) when length (Running) < Max ->
-    case queue: out (Queue) of
-	{{value, Fun}, New_q} ->
-	    Pid = spawn_link (Fun),
-	    run (Max, [{Pid} | Running], New_q);
-	{empty, Queue} ->
-	    loop (Max, Running, Queue)
+run (#state{max=Max, running=Running}=State) when length (Running) < Max ->
+    case queue: out (State#state.queue) of
+	{{value, {M, F, A}}, Q} ->
+	    spawn_link (State#state.node, consul, test, [M, F, A, self ()]),
+	    run (State#state{running=[{M, F} | Running], queue=Q});
+	{empty, _} ->
+	    loop (State)
     end;
-run (Max, Running, Queue) when length(Running) >= Max ->
-    loop (Max, Running, Queue).
+run (State) ->
+    loop (State).

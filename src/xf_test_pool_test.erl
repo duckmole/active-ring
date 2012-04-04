@@ -1,42 +1,31 @@
--module (xf_pool_test).
--test (exports).
--export ([basic/0]).
--export ([resists_crashing_jobs/0]).
+-module (xf_test_pool_test).
+-test (concurrency).
+-export ([concurrency/0]).
+-export ([ok_test/0]).
+-export ([ko_test/0]).
 
-basic () ->
-    Self = self(),
-    Refs = [make_ref() || _ <- [1,2,3]],
-    Jobs = [fun()->timer:sleep(1000), Self ! Ref end || Ref <- Refs],
-    Pool = spawn_link (xf_pool, init, [2]),
-    Pool ! {queue, Jobs},
+ok_test () ->
+    ok = timer: sleep (900).
+
+ko_test () ->
+    ko = timer: sleep (1000).
+
+concurrency () ->
+    Pool = spawn_link (xf_test_pool, init, [2, self ()]),
+    Pool ! {queue, {timer, sleep, [2000]}},
+    Pool ! {queue, {timer, sleep, [2000]}},
+    Pool ! {queue, {timer, sleep, [2000]}},
     Start = now (),
-    Refs = lists: sort (receive_n (3)),
+    Expected = lists: duplicate (3, {test, timer, sleep, pass}),
+    Expected = receive_n (3),
     Finish = now (),
     Diff_micro = adlib: now_diff (Start, Finish),
-    {two_concurrent, true} = {two_concurrent, Diff_micro < 2200000},
-    {three_concurrent, false} = {three_concurrent, Diff_micro < 1200000},
+    {two_concurrent, true} = {two_concurrent, Diff_micro < 5000000},
+    {three_concurrent, false} = {three_concurrent, Diff_micro < 3000000},
     Pool ! stop,
     timer:sleep (500),
     false = is_process_alive (Pool).
 
-resists_crashing_jobs () ->
-    Die = [fun()->timer:sleep(1000), throw(suicide) end || _ <- [1,2,3,4]],
-    Self = self(),
-    Ref = make_ref (),
-    Job = fun() -> timer:sleep(1000), Self ! Ref end,
-    Pool = spawn_link (xf_pool, init, [2]),
-    Pool ! {queue, Die ++ [Job]},
-    Start = now (),
-    [Ref] = lists: sort (receive_n (1)),
-    Finish = now (),
-    Diff_micro = adlib: now_diff (Start, Finish),
-    {two_concurrent, true} = {two_concurrent, Diff_micro < 3200000},
-    {more_concurrent, false} = {more_concurrent, Diff_micro < 2200000},
-    true = is_process_alive (Pool),
-    Pool ! stop,
-    timer:sleep (500),
-    false = is_process_alive (Pool).
-    
 receive_n (N) ->
     receive_n (N, []).
 
