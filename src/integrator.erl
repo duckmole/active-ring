@@ -7,13 +7,14 @@
 -export ([slave_node/1, slave/0]).
 -export ([consul_forms/1]).
 -import (dict, [new/0, store/3, fetch/2, fold/3, erase/2]).
--record (state, {mux, includes, slave, modules, included}).
+-record (state, {mux, includes, slave, pool, modules, included, testing=[]}).
 
 init (Mux) ->
     init (Mux, [], []).
 
 init (Mux, Dirs, Options) ->
-    S = #state {mux = Mux, includes = Dirs, slave = slave (), modules = new ()},
+    Slave = slave (),
+    S = #state {mux = Mux, includes = Dirs, slave = Slave, modules = new ()},
     S2 = S#state {included = new ()},
     State = options (Options, S2),
     idle (State).
@@ -29,8 +30,18 @@ slave () ->
 options ([{includes, Path} | Options], State) ->
     Includes = State#state.includes ++ Path,
     options (Options, State#state {includes = Includes});
-options ([_, Options], State) ->
+options ([sequential | Options], State) ->
+    Slave = State#state.slave,
+    Pool_size = 1,
+    Pool = spawn_link (xf_test_pool, init, [Slave, Pool_size, self ()]),
+    options (Options, State#state {pool = Pool});
+options ([_ | Options], State) ->
     options (Options, State);
+options ([], #state{pool=undefined}=State) ->
+    Slave = State#state.slave,
+    Pool_size = 4 * erlang: system_info (schedulers),
+    Pool = spawn_link (xf_test_pool, init, [Slave, Pool_size, self ()]),
+    State#state {pool = Pool};
 options ([], State) ->
     State.
 
@@ -79,7 +90,7 @@ testing (State) ->
 
 test_if_necessary ({M, C, _, T, P, F}, State) when M == C andalso T > P+F ->
     Next = fold (fun test_module/3, State, State#state.modules),
-    idle (Next);
+    receive_test_results (Next);
 test_if_necessary ({M, C, E, _, _, _}, State) when M == C + E ->
     idle (State);
 test_if_necessary (_, State) ->
@@ -139,29 +150,67 @@ test_module (File, {ok, _, _, Tests}, State) ->
     fold (Test, State, Tests).
 
 test (File, F, State) ->
-    #state {slave = Slave, mux = Mux, modules = Modules} = State,
-    {ok, M, Binary, Tests} = fetch (File, Modules),
-    spawn_link (Slave, consul, test, [M, F, [], self ()]),
-    Result =
-	receive
-	    {test, M, F, pass} ->
-		Mux ! {test, {M, F, 0, pass}},
-		pass;
-	    {test, M, F, {error, {Error, Stack_trace}}} ->
-		{File, Line} = modules: locate ({M, F, 0}, Binary),
-		Location = {M, F, 0, File, Line},
-		List = [{error, Error},
-			{stack_trace, Stack_trace},
-			{location, Location}],
-		Reason = dict: from_list (List),
-		Mux ! {test, {M, F, 0, {fail, Reason}}},
-		fail
-	end,
-    Ts = store (F, Result, Tests),
-    Module = {ok, M, Binary, Ts},
-    Ms = store (File, Module, Modules),
-    Mux ! totals (Ms),
-    State#state {modules = Ms}.
+    #state {modules = Modules} = State,
+    {ok, M, _, _} = fetch (File, Modules),
+    State#state.pool ! {queue, {M, F, []}},
+%%    spawn_link (Slave, consul, test, [M, F, [], self ()]),
+    Testing = [{M, File} | State#state.testing],
+    State#state {testing = Testing}.
+
+receive_test_results (State) ->
+    {totals, Totals} = totals (State#state.modules),
+    receive_test_results (Totals, State).
+
+receive_test_results ({C, C, 0, Ts, Ps, Fs}, State) when Ts > Ps + Fs ->
+    #state {mux = Mux, modules = Modules, testing=Testing} = State,
+    receive {test, M, F, Result} ->
+	    {value, {M, File}, Remaining} = lists: keytake (M, 1, Testing),
+	    {ok, M, Binary, Tests} = fetch (File, Modules),
+	    {Notified, Stored} = test_result (Result, {M, F, Binary}),
+	    Mux ! {test, {M, F, 0, Notified}},
+	    New_tests = store (F, Stored, Tests),
+	    Module = {ok, M, Binary, New_tests},
+	    New_modules = store (File, Module, Modules),
+	    {totals, Totals} = totals (New_modules),
+	    Mux ! {totals, Totals},
+	    New_state = State#state {modules = New_modules, testing = Remaining},
+	    receive_test_results (Totals, New_state)
+    end;
+receive_test_results (_, State) ->
+    idle (State).
+
+test_result (pass, _) ->
+    {pass, pass};
+test_result ({error, {Error, Stack}}, {M, F, Binary}) ->
+    {File, Line} = modules: locate ({M, F, 0}, Binary),
+    Location = {M, F, 0, File, Line},
+    List = [{error, Error},
+	    {stack_trace, Stack},
+	    {location, Location}],
+    Reason = dict: from_list (List),
+    {{fail, Reason}, fail}.
+    
+    %% Result =
+    %% 	receive
+    %% 	    {test, M, F, pass} ->
+    %% 		Mux ! {test, {M, F, 0, pass}},
+    %% 		pass;
+    %% 	    {test, M, F, {error, {Error, Stack_trace}}} ->
+    %% 		{File, Line} = modules: locate ({M, F, 0}, Binary),
+    %% 		Location = {M, F, 0, File, Line},
+    %% 		List = [{error, Error},
+    %% 			{stack_trace, Stack_trace},
+    %% 			{location, Location}],
+    %% 		Reason = dict: from_list (List),
+    %% 		Mux ! {test, {M, F, 0, {fail, Reason}}},
+    %% 		fail
+    %% 	end,
+    %% Ts = store (F, Result, Tests),
+    %% Module = {ok, M, Binary, Ts},
+    %% Ms = store (File, Module, Modules),
+    %% Mux ! totals (Ms),
+    %% State#state {modules = Ms}.
+    
 
 remove (F, State) ->
     case fetch (F, State#state.modules) of

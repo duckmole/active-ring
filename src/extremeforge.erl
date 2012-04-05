@@ -3,27 +3,29 @@
 %%% See file COPYING.
 
 -module (extremeforge).
--export ([start/1]).
--export ([start/0]).
--export ([run/1]).
--export ([run/0]).
+-export ([start/0, start/2, startseq/0]).
+-export ([run/0, run/2, runseq/0]).
 -export ([stop/0]).
 
 start () ->
     {ok, CWD} = file: get_cwd (),
-    start ([CWD]).
+    start ([CWD], []).
 
-start (Roots) ->
-    register (extremeforge, spawn_link (fun () -> init (Roots) end)).
+startseq () ->
+    {ok, CWD} = file: get_cwd (),
+    start ([CWD], [sequential]).
+    
+start (Roots, Options) ->
+    register (extremeforge, spawn_link (fun () -> init (Roots, Options) end)).
 
 stop () ->
     extremeforge ! stop,
     unregister (extremeforge).
 
-init (Roots) ->
+init (Roots, Options) ->
     Rs = [filename: absname (R) || R <- Roots],
     Printer = spawn_link (text_printer, init, [standard_io]),
-    Integrator = spawn_link (integrator, init, [Printer, Rs, []]),
+    Integrator = spawn_link (integrator, init, [Printer, Rs, Options]),
     F = fun (E) -> Integrator ! E end,
     Ws = [spawn_link (directory_watcher, init_recursive, [R, F]) || R <- Rs],
     loop ({Integrator, Printer, Ws}).
@@ -39,15 +41,19 @@ loop ({Integrator, Printer, Watchers} = State) ->
 
 run () ->
     {ok, CWD} = file: get_cwd (),
-    run ([CWD]).
+    run ([CWD], []).
 
-run (Roots) ->
-    spawn_link (fun () -> init_run (Roots) end).
+runseq () ->
+    {ok, CWD} = file: get_cwd (),
+    run ([CWD], [sequential]).
+    
+run (Roots, Options) ->
+    spawn_link (fun () -> init_run (Roots, Options) end).
 
-init_run (Roots) ->
+init_run (Roots, Options) ->
     Rs = [filename: absname (R) || R <- Roots],
     Printer = spawn_link (text_printer, init, [standard_io]),
-    Integrator = spawn_link (integrator, init, [self (), Rs, []]),
+    Integrator = spawn_link (integrator, init, [self (), Rs, Options]),
     F = fun (E) -> Integrator ! E end,
     Ws = [spawn_link (directory_watcher, init_recursive, [R, F]) || R <- Rs],
     wait_end ({Printer, Integrator, Ws}).

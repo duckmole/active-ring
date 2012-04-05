@@ -1,9 +1,12 @@
 -module (xf_test_pool).
--export ([init/2]).
+-export ([init/2, init/3]).
 -record (state, {node, max, parent, running, queue}).
 
 init (Max, Pid) ->
     Node = integrator: slave (),
+    init (Node, Max, Pid).
+
+init (Node, Max, Pid) ->
     State = #state{node=Node, max=Max, parent=Pid, running=[], queue=queue:new()},
     loop (State).
 
