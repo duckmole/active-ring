@@ -4,46 +4,49 @@
 
 -module (integrator).
 -export ([init/1, init/3]).
--export ([slave_node/1, slave/0]).
+-export ([slave_node/2, slave/1]).
 -export ([consul_forms/1]).
 -import (dict, [new/0, store/3, fetch/2, fold/3, erase/2]).
 -record (state, {mux, includes, slave, pool, modules, included, testing=[]}).
+-record (options, {includes="", pool, suffix="_"?MODULE_STRING"_slave"}).
 
 init (Mux) ->
     init (Mux, [], []).
 
-init (Mux, Dirs, Options) ->
-    Slave = slave (),
-    S = #state {mux = Mux, includes = Dirs, slave = Slave, modules = new ()},
-    S2 = S#state {included = new ()},
-    State = options (Options, S2),
+init (Mux, Dirs, Given_options) ->
+    Options = options (Given_options, #options{}),
+    Includes = Dirs ++ Options#options.includes,
+    Slave = slave (Options#options.suffix),
+    Pool = spawn_link (xf_test_pool, init, [Slave, Options#options.pool, self ()]),
+    State = #state {mux = Mux,
+		    included = new (),
+		    includes = Includes,
+		    modules = new (),
+		    slave = Slave,
+		    pool = Pool},
     idle (State).
 
-slave () ->
-    {Host, Name} = integrator: slave_node (node ()),
+slave (Suffix) ->
+    {Host, Name} = integrator: slave_node (node (), Suffix),
     {ok, Slave} = slave: start_link (Host, Name),
     Binary = modules: forms_to_binary (consul_forms (consul)),
     Load_args = [consul, "consul.beam", Binary],
     {module, consul} = rpc: call (Slave, code, load_binary, Load_args),
     Slave.
 
-options ([{includes, Path} | Options], State) ->
-    Includes = State#state.includes ++ Path,
-    options (Options, State#state {includes = Includes});
-options ([sequential | Options], State) ->
-    Slave = State#state.slave,
-    Pool_size = 1,
-    Pool = spawn_link (xf_test_pool, init, [Slave, Pool_size, self ()]),
-    options (Options, State#state {pool = Pool});
-options ([_ | Options], State) ->
-    options (Options, State);
-options ([], #state{pool=undefined}=State) ->
-    Slave = State#state.slave,
-    Pool_size = 4 * erlang: system_info (schedulers),
-    Pool = spawn_link (xf_test_pool, init, [Slave, Pool_size, self ()]),
-    State#state {pool = Pool};
-options ([], State) ->
-    State.
+options ([{includes, Path} | Tail], Options) ->
+    options (Tail, Options#options{includes=Path});
+options ([sequential | Tail], Options) ->
+    options (Tail, Options#options{pool=1});
+options ([{slave_suffix, Suffix} | Tail], Options) ->
+    options (Tail, Options#options{suffix=Suffix});
+options ([_ | Tail], Options) ->
+    options (Tail, Options);
+options ([], #options{pool=undefined}=Options) ->
+    Pool = 4 * erlang: system_info (schedulers),
+    options ([], Options#options {pool = Pool});
+options ([], Options) ->
+    Options.
 
 idle (State) ->
     receive_external (State, infinity, fun idle/1).
@@ -258,12 +261,12 @@ test_totals (_, pass, {T, P, F}) ->
 test_totals (_, fail, {T, P, F}) ->
     {T + 1, P, F + 1}.
 
-slave_node (nonode@nohost) ->
+slave_node (nonode@nohost, _) ->
     not_alive;
-slave_node (Node) ->
+slave_node (Node, Suffix) ->
     Node_string = atom_to_list (Node),
     [Name, Host_string] = string: tokens (Node_string, "@"),
-    Slave_name_string = Name ++ "_extremeforge_slave",
+    Slave_name_string = Name ++ Suffix,
     Slave_name = list_to_atom (Slave_name_string),
     Host = list_to_atom (Host_string),
     {Host, Slave_name}.

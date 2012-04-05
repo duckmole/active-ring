@@ -30,10 +30,11 @@
 -export ([recompiles_when_an_included_is_lost/0]).
 -export ([tests_may_spawn_link/0]).
 -export ([tests_are_concurrent/0]).
+-define (suffix, "_"?MODULE_STRING ++ integer_to_list(?LINE)).
+-define (integrator_args, [self(), [], [{slave_suffix, ?suffix}]]).
 
 start_stop () ->
-    Args = [self ()],
-    Integrator = spawn_link (integrator, init, Args),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     true = is_process_alive (Integrator),
     Integrator ! stop,
     stopped = receive_one (),
@@ -55,7 +56,7 @@ new_files_are_compiled_and_scanned_for_tests (Root, Fs) ->
     Files = lists: sublist (Fs, 4),
     Ps = [filename: join (Root, F) || {file, F, _} <- Files],
     [Compiles, Doesnt, Warnings, Has_tests] = Ps,
-    Integrator = spawn_link (integrator, init, [self ()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     Integrator ! {{file, ".erl"}, Compiles, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
     {compile, {compiles, ok, []}} = receive_one (),
@@ -87,7 +88,7 @@ tests_are_cleared_when_anything_recompiles () ->
 
 tests_are_cleared_when_anything_recompiles (Root, Files) ->
     [Foo, Bar] = [filename: join (Root, F) || {file, F, _} <- Files],
-    Integrator = spawn_link (integrator, init, [self()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     Integrator ! {{file, ".erl"}, Foo, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
     {compile, {foo, ok, []}} = receive_one (),
@@ -110,7 +111,7 @@ corrected_files_are_recompiled () ->
 
 corrected_files_are_recompiled (Root, [{file, F, _}]) ->
     Filename = filename: join (Root, F),
-    Integrator = spawn_link (integrator, init, [self()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     Integrator ! {{file, ".erl"}, Filename, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
     {compile, {foo, error, _}} = receive_one (),
@@ -129,7 +130,7 @@ when_all_compile_tests_are_run_in_separate_node (Root, Fs) ->
     Files = lists: sublist (Fs, 5),
     Ps = [filename: join (Root, F) || {file, F, _} <- Files],
     [Compiles, _, Warnings, Has_tests, Tests_other] = Ps,
-    Integrator = spawn_link (integrator, init, [self()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     lists: foreach (
       fun (F) -> Integrator ! {{file, ".erl"}, F, found} end,
       [Compiles, Warnings, Has_tests, Tests_other]),
@@ -157,7 +158,7 @@ removed_modules_are_unloaded_and_tests_not_run (Root, Fs) ->
     Files = lists: sublist (Fs, 5),
     Ps = [filename: join (Root, F) || {file, F, _} <- Files],
     [Compiles, _, _, Has_tests, Tests_other] = Ps,
-    Integrator = spawn_link (integrator, init, [self()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     lists: foreach (
       fun (F) -> Integrator ! {{file, ".erl"}, F, found} end,
       [Compiles, Has_tests, Tests_other]),
@@ -179,7 +180,7 @@ new_files_are_counted_before_compile_results_are_reported (Root, Fs) ->
     Files = lists: sublist (Fs, 4),
     Ps = [filename: join (Root, F) || {file, F, _} <- Files],
     [Compiles, _, Warnings, Has_tests] = Ps,
-    Integrator = spawn_link (integrator, init, [self()]),
+    Integrator = spawn_link (integrator, init, ?integrator_args),
     lists: foreach (
       fun (F) -> Integrator ! {{file, ".erl"}, F, found} end,
       [Compiles, Warnings, Has_tests]),
@@ -220,7 +221,7 @@ source_can_include_from_various_places (Root, _) ->
     Source1 = filename: join ([Project, "app1", "src", "my1.erl"]),
     Source2 = filename: join ([Project, "app2", "src", "my2.erl"]),
     Tests = filename: join ([Project, "tests", "tests.erl"]),
-    Options = [{includes, [Third]}],
+    Options = [{includes, [Third]}, {slave_suffix, ?suffix}],
     Integrator = spawn_link (integrator, init, [self(), [Project], Options]),
     Integrator ! {{file, ".hrl"}, Include, found},
     Integrator ! {{file, ".erl"}, Source1, found},
@@ -256,7 +257,8 @@ includers_are_recompiled_when_included_change () ->
 
 includers (Root, Files) ->
     [Module, Include] = [filename: join (Root, F) || {file, F, _} <- Files],
-    Integrator = spawn_link (integrator, init, [self (), [Root], []]),
+    Args = [self (), [Root], [{slave_suffix, ?suffix}]],
+    Integrator = spawn_link (integrator, init, Args),
     Integrator ! {{file, ".hrl"}, Include, found},
     Integrator ! {{file, ".erl"}, Module, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
@@ -284,7 +286,8 @@ recompiles_when_a_missing_include_is_found () ->
 
 recompiles_when_a_missing_include_is_found (Root, [{file, File, _}]) ->
     Module = filename: join (Root, File),
-    Integrator = spawn_link (integrator, init, [self (), [Root], []]),
+    Args = [self (), [Root], [{slave_suffix, ?suffix}]],
+    Integrator = spawn_link (integrator, init, Args),
     Integrator ! {{file, ".erl"}, Module, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
     {compile, {my, error, _}} = receive_one (),
@@ -312,7 +315,8 @@ recompiles_when_an_included_is_lost () ->
 
 recompiles_when_an_included_is_lost (Root, Files) ->
     [Module, Include] = [filename: join (Root, F) || {file, F, _} <- Files],
-    Integrator = spawn_link (integrator, init, [self (), [Root], []]),
+    Args = [self (), [Root], [{slave_suffix, ?suffix}]],
+    Integrator = spawn_link (integrator, init, Args),
     Integrator ! {{file, ".hrl"}, Include, found},
     Integrator ! {{file, ".erl"}, Module, found},
     {totals, {1,0,0,0,0,0}} = receive_one (),
@@ -332,7 +336,7 @@ at_startup_doesnt_compile_twice_if_included_is_found_after_source (Root, _) ->
     Third = filename: join (Root, "3rdparty"),
     Include = filename: join ([Project, "app1", "include", "myinc.hrl"]),
     Source = filename: join ([Project, "app1", "src", "my1.erl"]),
-    Options = [{includes, [Third]}],
+    Options = [{includes, [Third]}, {slave_suffix, ?suffix}],
     Integrator = spawn_link (integrator, init, [self(), [Project], Options]),
     Integrator ! {{file, ".erl"}, Source, found},
     Integrator ! {{file, ".hrl"}, Include, found},
@@ -345,11 +349,11 @@ at_startup_doesnt_compile_twice_if_included_is_found_after_source (Root, _) ->
     ok.
 
 tests_may_spawn_link () ->
-    Files = [{file, "mytest.erl",
-	      ["-module (mytest).",
-	       "-test (mytest).",
-	       "-export ([mytest/0]).",
-	       "mytest () ->",
+    Files = [{file, "test_that_spawn_links.erl",
+	      ["-module (test_that_spawn_links).",
+	       "-test (test_that_spawn_links).",
+	       "-export ([test_that_spawn_links/0]).",
+	       "test_that_spawn_links () ->",
 	       "spawn_link (nonexistent_module, nonexistent_function, []),",
 	       "timer: sleep (1000),",
 	       "ok."]}],
@@ -357,19 +361,20 @@ tests_may_spawn_link () ->
 
 tests_may_spawn_link (Root, [{file, F, _}]) ->
     Mytest = filename: join (Root, F),
-    Integrator = spawn_link (integrator, init, [self (), [Root], []]),
+    Args = [self (), [Root], [{slave_suffix, ?suffix}]],
+    Integrator = spawn_link (integrator, init, Args),
     Integrator ! {{file, ".erl"}, Mytest, found},
     {totals, _} = receive_one (),
     {compile, _} = receive_one (),
     {totals, {1,1,0,1,0,0}} = receive_one (),
-    {test, {mytest, mytest, 0, {fail, Reason}}} = receive_one (),
+    {test, {test_that_spawn_links, test_that_spawn_links, 0, {fail, Reason}}} = receive_one (),
     undef = dict: fetch (error, Reason),
     {totals, {1,1,0,1,0,1}} = receive_one (),
     Integrator ! stop,
     ok.
 
 receive_one () ->
-    receive M -> M after 3000 -> timeout end.
+    receive M -> M after 10000 -> timeout end.
 
 receive_until_found (M) ->
     receive M -> ok;
@@ -379,11 +384,11 @@ receive_until_found (M) ->
     end.
 
 slave_node () ->
-    Result = integrator: slave_node (mynode@myhost),
-    {myhost, mynode_extremeforge_slave} = Result.
+    Result = integrator: slave_node (mynode@myhost, "_integrator_test_slave_node"),
+    {myhost, mynode_integrator_test_slave_node} = Result.
 
 slave_node_nonode () ->
-    not_alive = integrator: slave_node (nonode@nohost).
+    not_alive = integrator: slave_node (nonode@nohost, "foo").
 
 consul_forms_test1 () ->
     ok.
@@ -418,8 +423,8 @@ consul_forms () ->
     ok.
 
 tests_are_concurrent () ->
-    Files = [{file, "mytest.erl",
-	      ["-module (mytest).",
+    Files = [{file, "my_slow_tests.erl",
+	      ["-module (my_slow_tests).",
 	       "-test (exports).",
 	       "-export ([slow1/0, slow2/0]).",
 	       "slow1 () ->",
@@ -429,16 +434,17 @@ tests_are_concurrent () ->
     ok = fixtures: use_tree (Files, fun tests_are_concurrent/2).
 
 tests_are_concurrent (Root, [{file, F, _}]) ->
-    Mytest = filename: join (Root, F),
-    Integrator = spawn_link (integrator, init, [self (), [Root], []]),
-    Integrator ! {{file, ".erl"}, Mytest, found},
+    My_slow_tests = filename: join (Root, F),
+    Args = [self (), [Root], [{slave_suffix, ?suffix}]],
+    Integrator = spawn_link (integrator, init, Args),
+    Integrator ! {{file, ".erl"}, My_slow_tests, found},
     {totals, _} = receive_one (),
     {compile, _} = receive_one (),
     {totals, {1,1,0,2,0,0}} = receive_one (),
     Start = now (),
-    {1, {test, {mytest, slow1, 0, pass}}} = {1, receive_one ()},
+    {1, {test, {my_slow_tests, slow1, 0, pass}}} = {1, receive_one ()},
     {2, {totals, {1,1,0,2,1,0}}} = {2, receive_one ()},
-    {3, {test, {mytest, slow2, 0, pass}}} = {3, receive_one ()},
+    {3, {test, {my_slow_tests, slow2, 0, pass}}} = {3, receive_one ()},
     {4, {totals, {1,1,0,2,2,0}}} = {4, receive_one ()},
     Finish = now (),
     Diff_micro = adlib:now_diff (Start, Finish),

@@ -11,7 +11,8 @@ ko_test () ->
     ko = timer: sleep (1000).
 
 concurrency () ->
-    Pool = spawn_link (xf_test_pool, init, [2, self ()]),
+    Node = integrator: slave ("_"?MODULE_STRING"_concurrency"),
+    Pool = spawn_link (xf_test_pool, init, [Node, 2, self ()]),
     Pool ! {queue, {timer, sleep, [2000]}},
     Pool ! {queue, {timer, sleep, [2000]}},
     Pool ! {queue, {timer, sleep, [2000]}},

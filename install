@@ -11,6 +11,6 @@ erl -pa ebin \
     -kernel error_logger "{file,\"../install_errors.log\"}" \
     -sname extremeforge_installer \
     -noinput \
-    -run extremeforge runseq || { echo "Installation failed."; exit 1; }
+    -run extremeforge run || { echo "Installation failed."; exit 1; }
 echo "Installation successfull."
 
